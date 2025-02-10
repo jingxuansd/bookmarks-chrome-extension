@@ -4,7 +4,7 @@ A Chrome extension that provides a convenient and elegant way to access your boo
 
 ## Demo
 
-![Demo](assets/demo.gif)
+![Demo](assets/bookmarks.gif)
 
 
 ## Features
