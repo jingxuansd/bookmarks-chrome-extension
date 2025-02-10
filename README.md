@@ -2,6 +2,11 @@
 
 A Chrome extension that provides a convenient and elegant way to access your bookmarks through a collapsible sidebar. The sidebar appears on the left side of your browser window, offering quick access to your bookmarks and bookmark folders.
 
+## Demo
+
+![Demo](assets/demo.gif)
+
+
 ## Features
 
 - 📌 Sleek, minimalist sidebar interface
