@@ -1,17 +1,34 @@
 .bookmark-sidebar {
   position: fixed;
-  top: 0;
-  left: 0;
-  height: 100vh;
+  top: 5vh;
+  left: 3vw;
+  height: 95vh;
   width: 40px;
-  background-color: rgba(248, 249, 250, 0.6);
-  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  background-color: rgba(248, 249, 250, 0.8);
+  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
-  transition: width 0.2s ease, opacity 0.2s ease;
+  /* box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.1); */
+  box-shadow: 
+  2px 2px 4px rgba(0, 0, 0, 0.2), /* 较小的内层阴影 */
+  4px 4px 10px rgba(0, 0, 0, 0.1); /* 较大的外层阴影 */
+  transition: opacity 2s ease-in-out, visibility 2s ease-in-out; /* 渐隐效果 */
   z-index: 2147483647;
-  overflow: hidden;
+  overflow: auto;
   opacity: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: #212529 !important;
+  transform: translateY(-15px);
+  visibility: hidden;
+}
+
+.bookmark-sidebar *:not(i):not(.fas):not(.far):not(.fab) {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
 }
 
 .bookmark-sidebar.initialized {
@@ -20,7 +37,7 @@
 
 .bookmark-sidebar.expanded {
   width: 250px;
-  background-color: rgba(248, 249, 250, 0.75);
+  background-color: rgba(248, 249, 250, 0.8);
 }
 
 .bookmark-sidebar:not(.expanded) .bookmark-item:not(.folder) {
@@ -63,61 +80,61 @@
   background-color: rgba(233, 236, 239, 0.8);
 }
 
+.bookmark-sidebar,
+.bookmark-sidebar *,
+.bookmark-toggle,
+.bookmark-item,
+.folder-header {
+  pointer-events: auto !important;
+}
+
+.bookmark-sidebar:not(.expanded):hover {
+  background-color: rgba(248, 249, 250, 0.8);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+}
+
 .bookmark-toggle {
   width: 40px;
   height: 40px;
-  background-color: rgba(233, 236, 239, 0.4);
+  background-color: rgba(233, 236, 239, 0.8);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease-in-out;
+  z-index: 2;
 }
 
 .bookmark-toggle::after {
   content: '☰';
-  font-size: 20px;
-  color: #495057;
+  font-size: 20px !important;
 }
 
 .bookmark-toggle:hover {
   background-color: rgba(233, 236, 239, 0.8);
 }
 
-.bookmarks-container {
-  padding: 8px;
-  overflow-y: auto;
-  height: calc(100vh - 40px);
-}
-
-.bookmark-item {
-  margin: 4px 0;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s ease;
-}
-
-.bookmark-item:hover {
-  background-color: rgba(233, 236, 239, 0.8);
-}
-
 .bookmark-item a {
-  color: rgba(33, 37, 41, 0.9);
-  text-decoration: none;
+  color: inherit !important;
+  text-decoration: none !important;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .bookmark-item img {
   width: 16px;
   height: 16px;
-  margin-right: 8px;
+  flex-shrink: 0;
 }
 
-.bookmark-item.folder {
-  cursor: pointer;
-  margin: 8px 0;
+.bookmark-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folder-header {
@@ -125,7 +142,45 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
-  color: rgba(33, 37, 41, 0.9);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.folder-toggle {
+  font-size: 12px !important;
+  color: #495057 !important;
+  transition: transform 0.2s ease;
+}
+
+.folder-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.folder-content {
+  display: none;
+  padding-left: 16px;
+}
+
+.folder.expanded .folder-content {
+  display: block;
+}
+
+.bookmark-item {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-item:hover {
+  background-color: rgba(233, 236, 239, 0.8);
 }
 
 .folder-header:hover {
@@ -136,20 +191,6 @@
 .folder-title {
   font-weight: 500;
   color: #495057;
-}
-
-.folder-toggle {
-  color: #6c757d;
-  font-size: 12px;
-}
-
-.folder-content {
-  display: none;
-  padding-left: 16px;
-}
-
-.folder.expanded .folder-content {
-  display: block;
 }
 
 ::-webkit-scrollbar {
@@ -167,4 +208,19 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #6c757d;
+}
+
+/* 小屏幕适配 */
+@media (max-width: 768px) {
+  .bookmark-sidebar {
+    font-size: 13px !important;
+  }
+  
+  .bookmark-toggle::after {
+    font-size: 18px !important;
+  }
+  
+  .folder-toggle {
+    font-size: 11px !important;
+  }
 }

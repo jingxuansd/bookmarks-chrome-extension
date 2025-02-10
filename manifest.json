@@ -5,8 +5,13 @@
   "description": "A bookmark manager that displays bookmarks in a vertical sidebar",
   "permissions": [
     "bookmarks",
-    "storage"
+    "storage",
+    "tabs"
   ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "action": {
     "default_title": "Bookmark Sidebar"
   },
@@ -15,12 +20,10 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [{
     "matches": ["<all_urls>"],
     "css": ["styles/sidebar.css"],
-    "js": ["scripts/content.js"]
+    "js": ["scripts/content.js"],
+    "run_at": "document_start"
   }]
 }

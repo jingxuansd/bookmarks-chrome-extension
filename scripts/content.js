@@ -15,7 +15,6 @@ bookmarksContainer.className = 'bookmarks-container';
 // Immediately initialize the sidebar structure
 sidebar.appendChild(toggleButton);
 sidebar.appendChild(bookmarksContainer);
-document.body.appendChild(sidebar);
 
 // Function to create bookmark elements
 function createBookmarkElement(bookmark) {
@@ -119,9 +118,47 @@ function createBookmarkElement(bookmark) {
   return element;
 }
 
+// Cache management functions
+async function saveBookmarksToCache(bookmarks) {
+  try {
+    await chrome.storage.local.set({ 'cachedBookmarks': bookmarks });
+    await chrome.storage.local.set({ 'lastCacheTime': Date.now() });
+  } catch (error) {
+    console.error('Error saving bookmarks to cache:', error);
+  }
+}
+
+async function loadBookmarksFromCache() {
+  try {
+    const { cachedBookmarks, lastCacheTime } = await chrome.storage.local.get(['cachedBookmarks', 'lastCacheTime']);
+    if (cachedBookmarks && lastCacheTime) {
+      // Check if cache is less than 5 minutes old
+      const cacheAge = Date.now() - lastCacheTime;
+      if (cacheAge < 5 * 60 * 1000) { // 5 minutes in milliseconds
+        return cachedBookmarks;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading bookmarks from cache:', error);
+    return null;
+  }
+}
+
 // Load and display bookmarks
 async function loadBookmarks() {
   try {
+    // Try to load from cache first
+    const cachedBookmarks = await loadBookmarksFromCache();
+    if (cachedBookmarks) {
+      bookmarksContainer.innerHTML = '';
+      cachedBookmarks[0].children.forEach(bookmark => {
+        bookmarksContainer.appendChild(createBookmarkElement(bookmark));
+      });
+      return;
+    }
+
+    // If no valid cache, load from Chrome API
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({ type: 'GET_BOOKMARKS' }, (response) => {
         if (chrome.runtime.lastError) {
@@ -144,6 +181,9 @@ async function loadBookmarks() {
       throw new Error('Invalid bookmark data structure');
     }
 
+    // Save to cache before displaying
+    await saveBookmarksToCache(response.bookmarks);
+
     bookmarksContainer.innerHTML = '';
     response.bookmarks[0].children.forEach(bookmark => {
       bookmarksContainer.appendChild(createBookmarkElement(bookmark));
@@ -154,31 +194,32 @@ async function loadBookmarks() {
   }
 }
 
-// Initialize bookmarks
-async function initializeBookmarks() {
+// Load saved sidebar state
+async function loadSidebarState() {
   try {
-    if (!chrome.runtime?.id) {
-      throw new Error('Extension context is not available');
+    const { sidebarState } = await chrome.storage.local.get('sidebarState');
+    if (sidebarState) {
+      isSidebarExpanded = sidebarState.isExpanded;
+      if (isSidebarExpanded) {
+        sidebar.classList.add('expanded');
+      }
     }
-    
-    await loadBookmarks();
-    // 添加初始化完成的标记，触发淡入动画
-    requestAnimationFrame(() => {
-      sidebar.classList.add('initialized');
-    });
   } catch (error) {
-    console.error('Error during initialization:', error);
-    bookmarksContainer.innerHTML = '<div class="error-message">Failed to connect to extension. Please try reloading the page.</div>';
+    console.error('Error loading sidebar state:', error);
   }
 }
 
-// 确保DOM完全加载后再初始化
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    requestAnimationFrame(initializeBookmarks);
-  });
-} else {
-  requestAnimationFrame(initializeBookmarks);
+// Save sidebar state
+async function saveSidebarState() {
+  try {
+    await chrome.storage.local.set({
+      'sidebarState': {
+        isExpanded: isSidebarExpanded
+      }
+    });
+  } catch (error) {
+    console.error('Error saving sidebar state:', error);
+  }
 }
 
 // Handle sidebar visibility
@@ -208,48 +249,143 @@ function collapseSidebar() {
   allFolders.forEach(collapseFolder);
 }
 
-toggleButton.addEventListener('click', (e) => {
-  e.stopPropagation();
-  isSidebarExpanded = !isSidebarExpanded;
-  if (isSidebarExpanded) {
-    sidebar.classList.add('expanded');
-  } else {
-    collapseSidebar();
-  }
-});
-
-document.addEventListener('click', (e) => {
-  if (!sidebar.contains(e.target) && isSidebarExpanded) {
-    collapseSidebar();
-  }
-});
-
-sidebar.addEventListener('mouseenter', () => {
-  isMouseOverSidebar = true;
-  clearTimeout(hideTimeout);
-  isSidebarExpanded = true;
-  requestAnimationFrame(() => {
-    sidebar.classList.add('expanded');
-  });
-});
-
-sidebar.addEventListener('mouseleave', () => {
-  isMouseOverSidebar = false;
-  if (hideTimeout) {
+function setupSidebarInteractions() {
+  // 鼠标移入事件
+  sidebar.addEventListener('mouseenter', function(e) {
+    console.log('Mouse entered sidebar');
+    isMouseOverSidebar = true;
     clearTimeout(hideTimeout);
-  }
-  hideTimeout = setTimeout(() => {
-    if (!isMouseOverSidebar) {
+    clearTimeout(sidebar.timer);
+    
+    // 如果当前是收起状态，则展开
+    if (!isSidebarExpanded) {
+      isSidebarExpanded = true;
+      sidebar.classList.add('expanded');
+      saveSidebarState();
+    }
+  });
+
+  // 鼠标移出事件
+  sidebar.addEventListener('mouseleave', function(e) {
+    console.log('Mouse left sidebar');
+    isMouseOverSidebar = false;
+    
+    // 确保目标元素不是侧边栏内的元素
+    if (!sidebar.contains(e.relatedTarget)) {
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+      }
+      
+      hideTimeout = setTimeout(() => {
+        if (!isMouseOverSidebar) {
+          collapseSidebar();
+          saveSidebarState();
+        }
+      }, 300);
+
+      // 5 秒后隐藏 sidebar
+      clearTimeout(sidebar.timer); // 清除之前的定时器，避免重复触发
+      sidebar.timer = setTimeout(() => {
+        sidebar.style.opacity = "0";
+        sidebar.style.visibility = "hidden";
+      }, 5000);
+    }
+  });
+
+  // 点击切换按钮事件
+  toggleButton.addEventListener('click', function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    isSidebarExpanded = !isSidebarExpanded;
+    if (isSidebarExpanded) {
+      sidebar.classList.add('expanded');
+    } else {
       collapseSidebar();
     }
-  }, 300);
+    saveSidebarState();
+  });
+
+  // 点击文档其他地方时收起侧边栏
+  document.addEventListener('click', function(e) {
+    if (!sidebar.contains(e.target) && isSidebarExpanded) {
+      collapseSidebar();
+      saveSidebarState();
+    }
+  });
+}
+
+async function initializeBookmarks() {
+  try {
+    // 创建并初始化侧边栏结构
+    document.body.appendChild(sidebar);
+    
+    // 加载保存的侧边栏状态
+    await loadSidebarState();
+    
+    // 设置事件监听器
+    setupSidebarInteractions();
+    
+    // 尝试加载书签（优先使用缓存）
+    await loadBookmarks();
+    
+    // 添加初始化完成的标记，触发淡入动画
+    requestAnimationFrame(() => {
+      sidebar.classList.add('initialized');
+    });
+    
+    // 设置自动保存状态的监听器
+    const autoSaveObserver = new MutationObserver(() => {
+      saveSidebarState();
+    });
+    
+    autoSaveObserver.observe(sidebar, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+  } catch (error) {
+    console.error('Error initializing bookmarks:', error);
+  }
+}
+
+// 确保在文档准备好时初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeBookmarks);
+  // 监听鼠标移动，控制 sidebar 的渐入渐出效果
+  document.addEventListener("mousemove", (event) => {
+    const sidebar = document.getElementById("bookmark-sidebar");
+
+    // 检查鼠标是否移动到窗口左侧 0~10px 范围
+    if (event.clientX <= 10) {
+      sidebar.style.opacity = "1";
+      sidebar.style.visibility = "visible";
+    }
+  });
+} else {
+  initializeBookmarks();
+}
+
+// 监听书签变化，自动更新缓存和显示
+chrome.bookmarks.onCreated.addListener(async () => {
+  await loadBookmarks();
+  await saveBookmarksToCache(await chrome.bookmarks.getTree());
 });
 
-// Listen for bookmark changes
-chrome.bookmarks.onCreated.addListener(loadBookmarks);
-chrome.bookmarks.onRemoved.addListener(loadBookmarks);
-chrome.bookmarks.onChanged.addListener(loadBookmarks);
-chrome.bookmarks.onMoved.addListener(loadBookmarks);
+chrome.bookmarks.onRemoved.addListener(async () => {
+  await loadBookmarks();
+  await saveBookmarksToCache(await chrome.bookmarks.getTree());
+});
+
+chrome.bookmarks.onChanged.addListener(async () => {
+  await loadBookmarks();
+  await saveBookmarksToCache(await chrome.bookmarks.getTree());
+});
+
+chrome.bookmarks.onMoved.addListener(async () => {
+  await loadBookmarks();
+  await saveBookmarksToCache(await chrome.bookmarks.getTree());
+});
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

@@ -1,9 +1,25 @@
-// Listen for extension installation or update
+// 监听扩展安装或更新
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Bookmark Sidebar Manager installed/updated');
 });
 
-// Handle messages from content script
+// 监听浏览器启动
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('Browser started, initializing bookmark sidebar');
+  try {
+    // 预加载书签数据到缓存
+    const bookmarks = await chrome.bookmarks.getTree();
+    await chrome.storage.local.set({
+      'cachedBookmarks': bookmarks,
+      'lastCacheTime': Date.now()
+    });
+    console.log('Bookmarks cached on browser startup');
+  } catch (error) {
+    console.error('Error caching bookmarks on startup:', error);
+  }
+});
+
+// 处理来自content script的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'GET_BOOKMARKS') {
     chrome.bookmarks.getTree().then(bookmarkTreeNodes => {
