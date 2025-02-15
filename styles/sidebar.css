@@ -162,21 +162,85 @@
 
 .folder-content {
   display: none;
-  padding-left: 16px;
+  padding-left: 20px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(248, 249, 250, 0.8);
+  border-left: 1px solid rgba(73, 80, 87, 0.15);
+  transition: transform 0.3s ease;
+  transform: translateX(100%);
 }
 
-.folder.expanded .folder-content {
+.folder.expanded > .folder-content {
   display: block;
+  transform: translateX(0);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  margin: 2px 0;
+}
+
+.folder-toggle {
+  font-size: 12px !important;
+  color: #495057 !important;
+  transition: transform 0.2s ease;
+  margin-right: 6px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.folder.expanded > .folder-header .folder-toggle {
+  transform: rotate(90deg);
 }
 
 .bookmark-item {
-  margin: 4px 0;
-  padding: 4px 8px;
+  margin: 2px 0;
+  padding: 6px 8px;
   border-radius: 4px;
-  transition: background-color 0.2s ease;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+.bookmark-item a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  color: #495057 !important;
+  text-decoration: none !important;
+  font-size: 14px;
+}
+
+.bookmark-item:hover,
+.folder-header:hover {
+  background-color: rgba(233, 236, 239, 0.8);
+  transform: translateX(2px);
 }
 
 .bookmark-item:hover {
@@ -191,6 +255,70 @@
 .folder-title {
   font-weight: 500;
   color: #495057;
+}
+
+/* 面包屑导航样式 */
+.breadcrumb-nav {
+  display: none;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background-color: rgba(233, 236, 239, 0.8);
+  border-radius: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(5px);
+}
+
+.bookmark-sidebar.expanded .breadcrumb-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: #495057;
+  font-size: 12px;
+  transition: color 0.2s ease;
+}
+
+.breadcrumb-item:hover {
+  color: #228be6;
+}
+
+.breadcrumb-separator {
+  color: #adb5bd;
+  margin: 0 4px;
+  user-select: none;
+}
+
+/* 书签容器样式调整 */
+.bookmarks-container {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.bookmarks-container .folder-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background-color: rgba(248, 249, 250, 0.8);
+  transition: transform 0.3s ease;
+}
+
+.bookmarks-container .folder-content.active {
+  transform: translateX(0);
+}
+
+.bookmarks-container .folder-content:not(.active) {
+  transform: translateX(100%);
+  pointer-events: none;
 }
 
 ::-webkit-scrollbar {

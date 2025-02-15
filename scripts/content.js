@@ -1,33 +1,158 @@
-// Create and inject the sidebar element
+// DOM 元素初始化
 const sidebar = document.createElement('div');
 sidebar.id = 'bookmark-sidebar';
 sidebar.className = 'bookmark-sidebar';
 
-// Create the toggle button
 const toggleButton = document.createElement('div');
 toggleButton.id = 'bookmark-toggle';
 toggleButton.className = 'bookmark-toggle';
 
-// Create the bookmarks container
 const bookmarksContainer = document.createElement('div');
 bookmarksContainer.className = 'bookmarks-container';
 
-// Immediately initialize the sidebar structure
+// 初始化侧边栏结构
 sidebar.appendChild(toggleButton);
 sidebar.appendChild(bookmarksContainer);
 
-// Function to create bookmark elements
+// 状态变量
+let isMouseOverSidebar = false;
+let hideTimeout;
+let isSidebarExpanded = false;
+
+/**
+ * 处理文件夹点击事件
+ * @param {Event} e - 点击事件对象
+ */
+function handleFolderClick(e) {
+  e.stopPropagation();
+  const folder = e.currentTarget.parentElement;
+  const toggle = folder.querySelector('.folder-toggle');
+  const content = folder.querySelector('.folder-content');
+  const currentLevel = folder.closest('.folder-content') || bookmarksContainer;
+
+  // 隐藏所有同级文件夹的内容
+  const siblings = Array.from(currentLevel.children).filter(child => 
+    child !== folder && child.classList.contains('folder')
+  );
+  siblings.forEach(sibling => {
+    sibling.classList.remove('expanded');
+    const siblingContent = sibling.querySelector('.folder-content');
+    const siblingToggle = sibling.querySelector('.folder-toggle');
+    if (siblingContent) siblingContent.style.display = 'none';
+    if (siblingToggle) siblingToggle.textContent = '▶';
+  });
+
+  // 切换当前文件夹的展开状态
+  folder.classList.toggle('expanded');
+  if (folder.classList.contains('expanded')) {
+    toggle.textContent = '▼';
+    content.style.display = 'block';
+    
+    // 更新面包屑导航
+    updateBreadcrumb(folder);
+  } else {
+    toggle.textContent = '▶';
+    content.style.display = 'none';
+    
+    // 清除面包屑导航
+    clearBreadcrumb();
+  }
+}
+
+function updateBreadcrumb(folder) {
+  const breadcrumbNav = document.querySelector('.breadcrumb-nav') || createBreadcrumbNav();
+  breadcrumbNav.innerHTML = '';
+  
+  const path = [];
+  let current = folder;
+  
+  // 构建路径
+  while (current && !current.classList.contains('bookmarks-container')) {
+    if (current.classList.contains('folder')) {
+      path.unshift({
+        title: current.querySelector('.folder-title').textContent,
+        element: current
+      });
+    }
+    current = current.parentElement.closest('.folder');
+  }
+  
+  // 添加根目录
+  path.unshift({
+    title: '书签',
+    element: bookmarksContainer
+  });
+  
+  // 创建面包屑项
+  path.forEach((item, index) => {
+    const breadcrumbItem = document.createElement('span');
+    breadcrumbItem.className = 'breadcrumb-item';
+    breadcrumbItem.textContent = item.title;
+    
+    if (index < path.length - 1) {
+      breadcrumbItem.addEventListener('click', () => {
+        if (item.element === bookmarksContainer) {
+          // 返回根目录
+          const allFolders = bookmarksContainer.querySelectorAll('.folder');
+          allFolders.forEach(f => {
+            f.classList.remove('expanded');
+            const content = f.querySelector('.folder-content');
+            const toggle = f.querySelector('.folder-toggle');
+            if (content) content.style.display = 'none';
+            if (toggle) toggle.textContent = '▶';
+          });
+        } else {
+          // 返回上级目录
+          const event = new Event('click');
+          item.element.querySelector('.folder-header').dispatchEvent(event);
+        }
+      });
+      
+      // 添加分隔符
+      const separator = document.createElement('span');
+      separator.className = 'breadcrumb-separator';
+      separator.textContent = ' > ';
+      breadcrumbNav.appendChild(breadcrumbItem);
+      breadcrumbNav.appendChild(separator);
+    } else {
+      breadcrumbNav.appendChild(breadcrumbItem);
+    }
+  });
+}
+
+function createBreadcrumbNav() {
+  const breadcrumbNav = document.createElement('div');
+  breadcrumbNav.className = 'breadcrumb-nav';
+  sidebar.insertBefore(breadcrumbNav, bookmarksContainer);
+  return breadcrumbNav;
+}
+
+function clearBreadcrumb() {
+  const breadcrumbNav = document.querySelector('.breadcrumb-nav');
+  if (breadcrumbNav) {
+    breadcrumbNav.innerHTML = '';
+  }
+}
+
+/**
+ * 创建书签元素
+ * @param {Object} bookmark - 书签对象
+ * @returns {HTMLElement} 创建的书签元素
+ */
 function createBookmarkElement(bookmark) {
   const element = document.createElement('div');
   element.className = 'bookmark-item';
+  element.setAttribute('data-bookmark-id', bookmark.id);
   
   if (bookmark.url) {
     // 获取网站的favicon
     const getFavicon = (url) => {
       try {
         const urlObj = new URL(url);
-        return `${urlObj.origin}/favicon.ico`;
+        // 首先尝试使用Google Favicon服务
+        return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
       } catch (e) {
+        console.warn(`[Favicon] Error parsing URL: ${url}`, e);
         return chrome.runtime.getURL('icons/icon16.png');
       }
     };
@@ -38,13 +163,19 @@ function createBookmarkElement(bookmark) {
     element.innerHTML = `
       <a href="${bookmark.url}" title="${bookmark.title}">
         <img src="${faviconUrl}" 
-             onerror="this.onerror=null; this.src='${defaultIcon}'" 
              alt=""
              width="16" 
-             height="16">
+             height="16"
+             onerror="this.onerror=null; this.src='${defaultIcon}';">
         <span>${bookmark.title}</span>
       </a>
     `;
+
+    // 为图片添加错误处理监听器
+    const img = element.querySelector('img');
+    img.addEventListener('error', function() {
+      this.src = defaultIcon;
+    });
 } else {
     element.className += ' folder';
     element.innerHTML = `
@@ -62,139 +193,141 @@ function createBookmarkElement(bookmark) {
       });
     }
     
-    element.querySelector('.folder-header').addEventListener('click', (e) => {
-      e.stopPropagation(); // 防止事件冒泡
-      
-      // 如果侧边栏是收起状态，先展开侧边栏
-      if (!sidebar.classList.contains('expanded')) {
-        sidebar.classList.add('expanded');
-        isSidebarExpanded = true;
-        // 给一点时间让侧边栏展开动画完成
-        setTimeout(() => {
-          const isExpanded = element.classList.toggle('expanded');
-          const toggle = element.querySelector('.folder-toggle');
-          const content = element.querySelector('.folder-content');
-          
-          if (isExpanded) {
-            toggle.textContent = '▼';
-            content.style.display = 'block';
-          } else {
-            toggle.textContent = '▶';
-            content.style.display = 'none';
-            
-            // 递归折叠所有子文件夹
-            const childFolders = content.querySelectorAll('.folder.expanded');
-            childFolders.forEach(folder => {
-              folder.classList.remove('expanded');
-              folder.querySelector('.folder-toggle').textContent = '▶';
-              folder.querySelector('.folder-content').style.display = 'none';
-            });
-          }
-        }, 200);
-      } else {
-        const isExpanded = element.classList.toggle('expanded');
-        const toggle = element.querySelector('.folder-toggle');
-        const content = element.querySelector('.folder-content');
-        
-        if (isExpanded) {
-          toggle.textContent = '▼';
-          content.style.display = 'block';
-        } else {
-          toggle.textContent = '▶';
-          content.style.display = 'none';
-          
-          // 递归折叠所有子文件夹
-          const childFolders = content.querySelectorAll('.folder.expanded');
-          childFolders.forEach(folder => {
-            folder.classList.remove('expanded');
-            folder.querySelector('.folder-toggle').textContent = '▶';
-            folder.querySelector('.folder-content').style.display = 'none';
-          });
-        }
-      }
-    });
+    element.querySelector('.folder-header').addEventListener('click', handleFolderClick);
   }
   
   return element;
 }
 
-// Cache management functions
+/**
+ * 保存书签到缓存
+ * @param {Array} bookmarks - 书签数组
+ */
 async function saveBookmarksToCache(bookmarks) {
   try {
+    console.log('[Bookmarks Cache] Saving bookmarks to cache...');
     await chrome.storage.local.set({ 'cachedBookmarks': bookmarks });
-    await chrome.storage.local.set({ 'lastCacheTime': Date.now() });
+    const timestamp = Date.now();
+    await chrome.storage.local.set({ 'lastCacheTime': timestamp });
+    console.log(`[Bookmarks Cache] Successfully saved bookmarks to cache at ${new Date(timestamp).toLocaleString()}`);
   } catch (error) {
-    console.error('Error saving bookmarks to cache:', error);
+    console.error('[Bookmarks Cache] Error saving bookmarks to cache:', error);
   }
 }
 
 async function loadBookmarksFromCache() {
   try {
+    console.log('[Bookmarks Cache] Attempting to load bookmarks from cache...');
     const { cachedBookmarks, lastCacheTime } = await chrome.storage.local.get(['cachedBookmarks', 'lastCacheTime']);
     if (cachedBookmarks && lastCacheTime) {
-      // Check if cache is less than 5 minutes old
       const cacheAge = Date.now() - lastCacheTime;
-      if (cacheAge < 5 * 60 * 1000) { // 5 minutes in milliseconds
+      const cacheAgeMinutes = Math.floor(cacheAge / 60000);
+      console.log(`[Bookmarks Cache] Found cached bookmarks from ${new Date(lastCacheTime).toLocaleString()} (${cacheAgeMinutes} minutes old)`);
+      if (cacheAge < 5 * 60 * 1000) {
+        console.log('[Bookmarks Cache] Cache is fresh (less than 5 minutes old), using cached data');
         return cachedBookmarks;
+      } else {
+        console.log('[Bookmarks Cache] Cache is stale (more than 5 minutes old), will fetch fresh data');
       }
+    } else {
+      console.log('[Bookmarks Cache] No cache found or cache is incomplete');
     }
     return null;
   } catch (error) {
-    console.error('Error loading bookmarks from cache:', error);
+    console.error('[Bookmarks Cache] Error loading bookmarks from cache:', error);
     return null;
   }
 }
 
-// Load and display bookmarks
+/**
+ * 加载并显示书签
+ */
 async function loadBookmarks() {
   try {
+    console.log('[Bookmarks] Starting to load bookmarks...');
     // Try to load from cache first
     const cachedBookmarks = await loadBookmarksFromCache();
     if (cachedBookmarks) {
+      console.log('[Bookmarks] Using cached bookmarks data');
       bookmarksContainer.innerHTML = '';
+      console.log(`[Bookmarks] Rendering ${cachedBookmarks[0].children.length} bookmarks from cache`);
       cachedBookmarks[0].children.forEach(bookmark => {
         bookmarksContainer.appendChild(createBookmarkElement(bookmark));
       });
       return;
     }
 
-    // If no valid cache, load from Chrome API
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: 'GET_BOOKMARKS' }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
+    // If no valid cache, load from Chrome API with retry mechanism
+    console.log('[Bookmarks] No valid cache found, fetching fresh data from Chrome API...');
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
+
+    while (retryCount < maxRetries) {
+      try {
+        const response = await new Promise((resolve, reject) => {
+          const messageTimeout = setTimeout(() => {
+            reject(new Error('消息响应超时'));
+          }, 5000);
+
+          chrome.runtime.sendMessage({ type: 'GET_BOOKMARKS' }, (response) => {
+            clearTimeout(messageTimeout);
+            if (chrome.runtime.lastError) {
+              console.error('[Bookmarks] Chrome API Error:', chrome.runtime.lastError);
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            console.log('[Bookmarks] Successfully received response from Chrome API');
+            resolve(response);
+          });
+        });
+
+        if (!response) {
+          throw new Error('未收到后台脚本响应');
         }
-        resolve(response);
-      });
-    });
 
-    if (!response) {
-      throw new Error('No response received from background script');
+        if (response.error) {
+          throw new Error(response.error);
+        }
+
+        if (!response.bookmarks || !response.bookmarks[0] || !response.bookmarks[0].children) {
+          throw new Error('书签数据结构无效');
+        }
+
+        // Save to cache before displaying
+        console.log('[Bookmarks] Saving fresh bookmarks data to cache...');
+        await saveBookmarksToCache(response.bookmarks);
+
+        console.log(`[Bookmarks] Rendering ${response.bookmarks[0].children.length} bookmarks from fresh data`);
+        bookmarksContainer.innerHTML = '';
+        response.bookmarks[0].children.forEach(bookmark => {
+          bookmarksContainer.appendChild(createBookmarkElement(bookmark));
+        });
+        console.log('[Bookmarks] Successfully rendered all bookmarks');
+        return;
+
+      } catch (error) {
+        console.error(`[Bookmarks] Attempt ${retryCount + 1}/${maxRetries} failed:`, error);
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          console.log(`[Bookmarks] Retrying in ${retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
     }
 
-    if (response.error) {
-      throw new Error(response.error);
-    }
+    throw new Error(`加载书签失败，已重试 ${maxRetries} 次`);
 
-    if (!response.bookmarks || !response.bookmarks[0] || !response.bookmarks[0].children) {
-      throw new Error('Invalid bookmark data structure');
-    }
-
-    // Save to cache before displaying
-    await saveBookmarksToCache(response.bookmarks);
-
-    bookmarksContainer.innerHTML = '';
-    response.bookmarks[0].children.forEach(bookmark => {
-      bookmarksContainer.appendChild(createBookmarkElement(bookmark));
-    });
   } catch (error) {
     console.error('Error loading bookmarks:', error);
-    bookmarksContainer.innerHTML = `<div class="error-message">Error loading bookmarks: ${error.message}</div>`;
+    bookmarksContainer.innerHTML = `<div class="error-message">加载书签时出错: ${error.message}</div>`;
   }
 }
 
-// Load saved sidebar state
+/**
+ * 加载侧边栏状态
+ */
 async function loadSidebarState() {
   try {
     const { sidebarState } = await chrome.storage.local.get('sidebarState');
@@ -209,23 +342,36 @@ async function loadSidebarState() {
   }
 }
 
-// Save sidebar state
+/**
+ * 保存侧边栏状态
+ */
 async function saveSidebarState() {
   try {
+    // 检查chrome.storage API是否可用
+    if (!chrome?.storage?.local) {
+      console.warn('[Sidebar State] Chrome storage API not available');
+      return;
+    }
+
+    console.log('[Sidebar State] Saving sidebar state...');
     await chrome.storage.local.set({
       'sidebarState': {
         isExpanded: isSidebarExpanded
       }
     });
+    console.log('[Sidebar State] Successfully saved sidebar state');
   } catch (error) {
-    console.error('Error saving sidebar state:', error);
+    console.error('[Sidebar State] Error saving sidebar state:', error);
+    // 错误发生时，至少保持UI状态的一致性
+    if (isSidebarExpanded) {
+      sidebar.classList.add('expanded');
+    } else {
+      sidebar.classList.remove('expanded');
+    }
   }
 }
 
-// Handle sidebar visibility
-let isMouseOverSidebar = false;
-let hideTimeout;
-let isSidebarExpanded = false;
+
 
 function collapseSidebar() {
   isSidebarExpanded = false;
@@ -366,35 +512,72 @@ if (document.readyState === 'loading') {
   initializeBookmarks();
 }
 
-// 监听书签变化，自动更新缓存和显示
-chrome.bookmarks.onCreated.addListener(async () => {
-  await loadBookmarks();
-  await saveBookmarksToCache(await chrome.bookmarks.getTree());
-});
+// 书签变化事件监听
+if (chrome.bookmarks && chrome.bookmarks.onCreated) {
+  chrome.bookmarks.onCreated.addListener(async () => {
+    await loadBookmarks();
+    await saveBookmarksToCache(await chrome.bookmarks.getTree());
+  });
+}
 
-chrome.bookmarks.onRemoved.addListener(async () => {
-  await loadBookmarks();
-  await saveBookmarksToCache(await chrome.bookmarks.getTree());
-});
+if (chrome.bookmarks && chrome.bookmarks.onRemoved) {
+  chrome.bookmarks.onRemoved.addListener(async () => {
+    await loadBookmarks();
+    await saveBookmarksToCache(await chrome.bookmarks.getTree());
+  });
+}
 
-chrome.bookmarks.onChanged.addListener(async () => {
-  await loadBookmarks();
-  await saveBookmarksToCache(await chrome.bookmarks.getTree());
-});
+if (chrome.bookmarks && chrome.bookmarks.onMoved) {
+  chrome.bookmarks.onMoved.addListener(async () => {
+    await loadBookmarks();
+    await saveBookmarksToCache(await chrome.bookmarks.getTree());
+  });
+}
 
-chrome.bookmarks.onMoved.addListener(async () => {
-  await loadBookmarks();
-  await saveBookmarksToCache(await chrome.bookmarks.getTree());
-});
+if (chrome.bookmarks && chrome.bookmarks.onChanged) {
+  chrome.bookmarks.onChanged.addListener(async () => {
+    await loadBookmarks();
+    await saveBookmarksToCache(await chrome.bookmarks.getTree());
+  });
+}
 
-// Listen for messages from background script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'TOGGLE_SIDEBAR') {
-    isSidebarExpanded = !isSidebarExpanded;
-    if (isSidebarExpanded) {
-      sidebar.classList.add('expanded');
-    } else {
-      collapseSidebar();
+// 后台消息监听
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'TOGGLE_SIDEBAR') {
+    toggleSidebar();
+  } else if (message.type === 'BOOKMARK_CREATED') {
+    // 处理新增书签事件
+    console.log('[Bookmarks] Received bookmark created event:', message.bookmark);
+    const bookmarkElement = createBookmarkElement(message.bookmark);
+    
+    // 根据parentId找到父文件夹并插入书签
+    if (message.bookmark.parentId) {
+      const parentFolder = bookmarksContainer.querySelector(`[data-bookmark-id="${message.bookmark.parentId}"]`);
+      if (parentFolder) {
+        const folderContent = parentFolder.querySelector('.folder-content');
+        if (folderContent) {
+          folderContent.appendChild(bookmarkElement);
+          return;
+        }
+      }
+    }
+    
+    // 如果找不到父文件夹或是根节点的直接子书签，则添加到根节点
+    bookmarksContainer.appendChild(bookmarkElement);
+  } else if (message.type === 'BOOKMARK_CHANGED') {
+    // 处理书签修改事件
+    console.log('[Bookmarks] Received bookmark changed event:', message.bookmarkId, message.changeInfo);
+    const existingBookmark = bookmarksContainer.querySelector(`[data-bookmark-id="${message.bookmarkId}"]`);
+    if (existingBookmark) {
+      existingBookmark.querySelector('.bookmark-title').textContent = message.changeInfo.title;
+      existingBookmark.querySelector('.bookmark-link').href = message.changeInfo.url;
+    }
+  } else if (message.type === 'BOOKMARK_REMOVED') {
+    // 处理书签删除事件
+    console.log('[Bookmarks] Received bookmark removed event:', message.bookmarkId);
+    const bookmarkToRemove = bookmarksContainer.querySelector(`[data-bookmark-id="${message.bookmarkId}"]`);
+    if (bookmarkToRemove) {
+      bookmarkToRemove.remove();
     }
   }
 });
